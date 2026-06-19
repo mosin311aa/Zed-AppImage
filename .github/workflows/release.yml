@@ -230,4 +230,8 @@ jobs:
           done
 
       - name: Post-release debug
-        if: steps.check_update.outputs.NE*](#)
+        if: steps.check_update.outputs.NEEDS_BUILD == 'true'
+        run: |
+          echo "Final files:"
+          ls -la Zed_Preview-*.* 2>/dev/null || ls -la Zed-*.* 2>/dev/null || true
+          echo "Post-release debug complete."
