@@ -22,6 +22,7 @@ jobs:
         id: get_version
         run: |
           set -euo pipefail
+          # Get prerelease tag + date
           ALL_RELEASES=$(curl -sH "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/zed-industries/zed/releases")
           TAG=$(echo "$ALL_RELEASES" | jq -r 'map(select(.prerelease)) | first | .tag_name')
           DATE=$(echo "$ALL_RELEASES" | jq -r 'map(select(.prerelease)) | first | .published_at')
@@ -34,6 +35,21 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "DATE_EPOCH=$(date -d "$DATE" +%s 2>/dev/null || date -d '2020-01-01' +%s)" >> $GITHUB_OUTPUT
 
+          # Try to get the direct browser_download_url for the linux x86_64 tarball from the release by tag.
+          RELEASE_BY_TAG=$(curl -sH "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/zed-industries/zed/releases/tags/${TAG}" || true)
+          DOWNLOAD_URL=$(echo "$RELEASE_BY_TAG" | jq -r '.assets[]? | select(.name=="zed-linux-x86_64.tar.gz") | .browser_download_url' || true)
+          # Fallback: search the ALL_RELEASES list for the first matching asset
+          if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+            DOWNLOAD_URL=$(echo "$ALL_RELEASES" | jq -r '.[].assets[]? | select(.name=="zed-linux-x86_64.tar.gz") | .browser_download_url' | head -n1 || true)
+          fi
+          if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+            echo "WARNING: could not determine download URL for zed-linux-x86_64.tar.gz (tag: ${TAG})" >&2
+            # Still export empty so downstream step can handle it and fail with clearer message
+            echo "DOWNLOAD_URL=" >> $GITHUB_OUTPUT
+          else
+            echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_OUTPUT
+          fi
+
       - name: Check for existing release
         id: check_update
         run: |
@@ -41,7 +57,7 @@ jobs:
           # Query the GitHub API for the 'latest' release and inspect its body for our version marker
           LATEST=$(curl -sH "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/${{ github.repository }}/releases/latest" || true)
           if echo "$LATEST" | jq -e . >/dev/null 2>&1; then
-            EXISTING=$(echo "$LATEST" | jq -r '.body' | grep -oP 'Zed version: \K[0-9.]+' || echo "none")
+            EXISTING=$(echo "$LATEST" | jq -r '.body' | grep -oP 'Zed version: \K[0-9.-]+' || echo "none")
             if [ "$EXISTING" = "${{ steps.get_version.outputs.VERSION }}" ]; then
               echo "NEEDS_BUILD=false" >> $GITHUB_OUTPUT
               exit 0
@@ -65,14 +81,14 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ steps.get_version.outputs.TAG }}"
-          # Find the exact browser_download_url for the linux x86_64 tarball from the release's assets
-          RELEASE_JSON=$(curl -sH "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/zed-industries/zed/releases/tags/${TAG}" || true)
-          DOWNLOAD_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name|test("zed-linux-x86_64.tar.gz")) | .browser_download_url' || true)
-          if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
-            echo "No asset found for zed-linux-x86_64.tar.gz in release ${TAG}"
+          DOWNLOAD_URL="${{ steps.get_version.outputs.DOWNLOAD_URL }}"
+
+          if [ -z "$DOWNLOAD_URL" ]; then
+            echo "No DOWNLOAD_URL available for tag ${TAG}; cannot download zed-linux-x86_64.tar.gz"
             exit 1
           fi
-          echo "DOWNLOAD_URL=$DOWNLOAD_URL"
+          echo "Using DOWNLOAD_URL: $DOWNLOAD_URL"
+
           # Download with retries and follow redirects
           for i in 1 2 3; do
             if curl -L --fail -o zed-linux-x86_64.tar.gz "$DOWNLOAD_URL"; then
