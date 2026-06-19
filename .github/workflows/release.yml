@@ -33,12 +33,16 @@ jobs:
       - name: Check for existing release
         id: check_update
         run: |
+          # Use the proper "latest" endpoint (not /releases/tags/latest) and check for an existing "Zed version" marker
           LATEST=$(curl -sH "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/${{ github.repository }}/releases/tags/latest || true)
-          if echo "$LATEST" | grep -q '"tag_name":"latest"'; then
+            https://api.github.com/repos/${{ github.repository }}/releases/latest || true)
+          # If we got a release object, extract the Zed version from the release body
+          if echo "$LATEST" | jq -e . >/dev/null 2>&1; then
             EXISTING=$(echo "$LATEST" | jq -r '.body' | grep -oP 'Zed version: \K[0-9.]+' || echo "none")
-            [ "$EXISTING" = "${{ steps.get_version.outputs.VERSION }}" ] && \
-              { echo "NEEDS_BUILD=false" >> $GITHUB_OUTPUT; exit 0; }
+            if [ "$EXISTING" = "${{ steps.get_version.outputs.VERSION }}" ]; then
+              echo "NEEDS_BUILD=false" >> $GITHUB_OUTPUT
+              exit 0
+            fi
           fi
           echo "NEEDS_BUILD=true" >> $GITHUB_OUTPUT
           echo "APP_NAME=Zed" >> $GITHUB_ENV
@@ -105,6 +109,7 @@ jobs:
           ls -la AppDir/
 
       - name: Build AppImage
+        id: build_appimage
         if: steps.check_update.outputs.NEEDS_BUILD == 'true'
         env:
           VERSION: ${{ env.APP_VERSION }}
@@ -121,14 +126,18 @@ jobs:
           ./appimagetool-940-x86_64.AppImage ./AppDir
           
           echo "Files generated:"
-          ls -la Zed_Preview-*.AppImage Zed_Preview-*.zsync 2>/dev/null
+          ls -la Zed_Preview-*.AppImage Zed_Preview-*.zsync 2>/dev/null || true
+          # Capture the actual generated AppImage name (support both Zed_Preview-* and Zed-*)
+          APPIMAGE_FILE=$(ls Zed_Preview-*.AppImage 2>/dev/null | head -n 1 || ls Zed-*.AppImage 2>/dev/null | head -n 1 || true)
+          echo "APPIMAGE_FILE=$APPIMAGE_FILE" >> $GITHUB_OUTPUT
 
       - name: Verify and validate AppImage
         if: steps.check_update.outputs.NEEDS_BUILD == 'true'
         run: |
-          APPIMAGE_FILE=$(ls Zed_Preview-*.AppImage 2>/dev/null | head -n 1)
+          APPIMAGE_FILE=$(ls Zed_Preview-*.AppImage 2>/dev/null | head -n 1 || ls Zed-*.AppImage 2>/dev/null | head -n 1 || true)
+          test -n "$APPIMAGE_FILE" || (echo "AppImage missing" && exit 1)
           test -f "$APPIMAGE_FILE" || (echo "AppImage missing" && exit 1)
-          
+          echo "APPIMAGE_FILE=$APPIMAGE_FILE" >> $GITHUB_ENV
           chmod +x "$APPIMAGE_FILE"
           echo "AppImage: $APPIMAGE_FILE"
           echo "AppImage size: $(ls -lah "$APPIMAGE_FILE" | awk '{print $5}')"
@@ -137,9 +146,10 @@ jobs:
         if: steps.check_update.outputs.NEEDS_BUILD == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          FILES="Zed_Preview-${{ env.APP_VERSION }}-x86_64.AppImage"
-          ZSYNC_FILE="Zed_Preview-${{ env.APP_VERSION }}-x86_64.AppImage.zsync"
+          FILES="$APPIMAGE_FILE"
+          ZSYNC_FILE="${APPIMAGE_FILE}.zsync"
           [ -f "$ZSYNC_FILE" ] && FILES="$FILES $ZSYNC_FILE"
           
           for file in $FILES; do
@@ -177,4 +187,4 @@ jobs:
         if: steps.check_update.outputs.NEEDS_BUILD == 'true'
         run: |
           echo "Final files:"
-          ls -la Zed_Preview-*.* 2>/dev/null || true
+          ls -la Zed_Preview-*.* 2>/dev/null || ls -la Zed-*.* 2>/dev/null || true
