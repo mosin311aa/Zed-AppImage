@@ -21,10 +21,14 @@ jobs:
       - name: Get version info
         id: get_version
         run: |
-          ALL_RELEASES=$(curl -sH "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/zed-industries/zed/releases)
+          set -euo pipefail
+          ALL_RELEASES=$(curl -sH "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/zed-industries/zed/releases")
           TAG=$(echo "$ALL_RELEASES" | jq -r 'map(select(.prerelease)) | first | .tag_name')
           DATE=$(echo "$ALL_RELEASES" | jq -r 'map(select(.prerelease)) | first | .published_at')
-          [ -z "$TAG" ] && { echo "No pre-release found"; exit 1; }
+          if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+            echo "No pre-release found"
+            exit 1
+          fi
           VERSION=$(echo "$TAG" | sed 's/^v//')
           echo "TAG=$TAG" >> $GITHUB_OUTPUT
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
@@ -33,10 +37,9 @@ jobs:
       - name: Check for existing release
         id: check_update
         run: |
-          # Use the proper "latest" endpoint (not /releases/tags/latest) and check for an existing "Zed version" marker
-          LATEST=$(curl -sH "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/${{ github.repository }}/releases/latest || true)
-          # If we got a release object, extract the Zed version from the release body
+          set -euo pipefail
+          # Query the GitHub API for the 'latest' release and inspect its body for our version marker
+          LATEST=$(curl -sH "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/${{ github.repository }}/releases/latest" || true)
           if echo "$LATEST" | jq -e . >/dev/null 2>&1; then
             EXISTING=$(echo "$LATEST" | jq -r '.body' | grep -oP 'Zed version: \K[0-9.]+' || echo "none")
             if [ "$EXISTING" = "${{ steps.get_version.outputs.VERSION }}" ]; then
@@ -52,7 +55,7 @@ jobs:
         if: steps.check_update.outputs.NEEDS_BUILD == 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y squashfs-tools libfuse2 wget jq gh
+          sudo apt-get install -y squashfs-tools libfuse2 wget jq curl gh
 
       - name: Download & prepare Zed with retry and validation
         if: steps.check_update.outputs.NEEDS_BUILD == 'true'
@@ -60,53 +63,81 @@ jobs:
           TZ: UTC
           SOURCE_DATE_EPOCH: ${{ steps.get_version.outputs.DATE_EPOCH }}
         run: |
-          # Download with retry
-          for i in {1..3}; do
-            if wget -q "https://github.com/zed-industries/zed/releases/download/${{ steps.get_version.outputs.TAG }}/zed-linux-x86_64.tar.gz"; then
+          set -euo pipefail
+          TAG="${{ steps.get_version.outputs.TAG }}"
+          # Find the exact browser_download_url for the linux x86_64 tarball from the release's assets
+          RELEASE_JSON=$(curl -sH "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/zed-industries/zed/releases/tags/${TAG}" || true)
+          DOWNLOAD_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name|test("zed-linux-x86_64.tar.gz")) | .browser_download_url' || true)
+          if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+            echo "No asset found for zed-linux-x86_64.tar.gz in release ${TAG}"
+            exit 1
+          fi
+          echo "DOWNLOAD_URL=$DOWNLOAD_URL"
+          # Download with retries and follow redirects
+          for i in 1 2 3; do
+            if curl -L --fail -o zed-linux-x86_64.tar.gz "$DOWNLOAD_URL"; then
+              echo "Downloaded archive"
               break
-            elif [ $i -eq 3 ]; then
+            fi
+            if [ "$i" -eq 3 ]; then
               echo "Failed to download after 3 attempts"
               exit 1
             fi
             sleep 5
           done
-          
+
           # Verify download
           if [ ! -f zed-linux-x86_64.tar.gz ]; then
             echo "Download failed - archive not found"
             exit 1
           fi
           echo "Downloaded archive size: $(ls -lah zed-linux-x86_64.tar.gz | awk '{print $5}')"
-          
+
           tar -xzf zed-linux-x86_64.tar.gz --mtime='2020-01-01 00:00:00'
-          mv zed-preview.app AppDir
-          rm zed-linux-x86_64.tar.gz
-          
-          echo "AppDir structure:"
-          find AppDir -name "*.desktop" -type f
-          
-          DESKTOP_FILE=$(find AppDir -name "*.desktop" -type f | head -n 1)
+          # adapt if layout varies
+          if [ -d "zed-preview.app" ]; then
+            mv zed-preview.app AppDir
+          elif [ -d "AppDir" ]; then
+            echo "AppDir already present"
+          else
+            # try to find unpacked directory
+            DIR=$(tar -tzf zed-linux-x86_64.tar.gz | head -n1 | cut -f1 -d"/" || true)
+            if [ -d "$DIR" ]; then
+              mv "$DIR" AppDir || true
+            else
+              echo "Could not locate unpacked AppDir"
+              exit 1
+            fi
+          fi
+          rm -f zed-linux-x86_64.tar.gz || true
+
+          echo "AppDir structure (desktop files):"
+          find AppDir -name "*.desktop" -type f || true
+
+          DESKTOP_FILE=$(find AppDir -name "*.desktop" -type f | head -n 1 || true)
           if [ -z "$DESKTOP_FILE" ]; then
             echo "ERROR: No desktop file found in AppDir"
             exit 1
           fi
           echo "Found desktop file: $DESKTOP_FILE"
-          
+
           cp "$DESKTOP_FILE" AppDir/zed.desktop
-          sed -i 's/Name=zed-preview/Name=Zed/' AppDir/zed.desktop
-          sed -i 's/Exec=zed-preview/Exec=zed/' AppDir/zed.desktop
-          
-          ICON_FILE=$(find AppDir -name "zed*.png" -type f | head -n 1)
+          sed -i 's/Name=zed-preview/Name=Zed/' AppDir/zed.desktop || true
+          sed -i 's/Exec=zed-preview/Exec=zed/' AppDir/zed.desktop || true
+
+          ICON_FILE=$(find AppDir -name "zed*.png" -type f | head -n 1 || true)
           if [ -n "$ICON_FILE" ]; then
             cp "$ICON_FILE" AppDir/zed.png
             echo "Copied icon: $ICON_FILE"
           fi
-          
-          cd AppDir && ln -sf bin/zed AppRun && cd ..
-          find AppDir -type f -o -type d | sort | xargs touch -t 202001010000.00
-          
+
+          # ensure AppRun points to binary
+          cd AppDir && ln -sf bin/zed AppRun || true && cd ..
+          # normalize timestamps for reproducible builds
+          find AppDir -type f -o -type d | sort | xargs touch -t 202001010000.00 || true
+
           echo "Final AppDir top-level:"
-          ls -la AppDir/
+          ls -la AppDir/ || true
 
       - name: Build AppImage
         id: build_appimage
@@ -114,31 +145,41 @@ jobs:
         env:
           VERSION: ${{ env.APP_VERSION }}
         run: |
+          set -euo pipefail
           echo "AppDir contents before build:"
-          ls -la AppDir/
+          ls -la AppDir/ || true
           echo "Desktop file in AppDir:"
-          cat AppDir/*.desktop
-          
-          wget -q https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-940-x86_64.AppImage
-          chmod +x appimagetool-940-x86_64.AppImage
-          
+          cat AppDir/*.desktop || true
+
+          wget -q https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-940-x86_64.AppImage -O appimagetool.AppImage
+          chmod +x appimagetool.AppImage || true
+
           echo "Building AppImage with VERSION=$VERSION"
-          ./appimagetool-940-x86_64.AppImage ./AppDir
-          
-          echo "Files generated:"
-          ls -la Zed_Preview-*.AppImage Zed_Preview-*.zsync 2>/dev/null || true
-          # Capture the actual generated AppImage name (support both Zed_Preview-* and Zed-*)
-          APPIMAGE_FILE=$(ls Zed_Preview-*.AppImage 2>/dev/null | head -n 1 || ls Zed-*.AppImage 2>/dev/null | head -n 1 || true)
-          echo "APPIMAGE_FILE=$APPIMAGE_FILE" >> $GITHUB_OUTPUT
+          ./appimagetool.AppImage ./AppDir || true
+
+          echo "Files generated (raw):"
+          ls -la *.AppImage 2>/dev/null || true
+          # Capture the actual generated AppImage name
+          APPIMAGE_FILE=$(ls *.AppImage 2>/dev/null | head -n 1 || true)
+          if [ -z "$APPIMAGE_FILE" ]; then
+            echo "No AppImage produced"
+            exit 1
+          fi
+          # Normalize the name to a predictable format
+          TARGET="Zed_Preview-${VERSION}-x86_64.AppImage"
+          mv "$APPIMAGE_FILE" "$TARGET" || true
+          echo "APPIMAGE_FILE=$TARGET" >> $GITHUB_OUTPUT
+          echo "Generated APPIMAGE_FILE: $TARGET"
 
       - name: Verify and validate AppImage
         if: steps.check_update.outputs.NEEDS_BUILD == 'true'
         run: |
-          APPIMAGE_FILE=$(ls Zed_Preview-*.AppImage 2>/dev/null | head -n 1 || ls Zed-*.AppImage 2>/dev/null | head -n 1 || true)
+          set -euo pipefail
+          APPIMAGE_FILE="${{ steps.build_appimage.outputs.APPIMAGE_FILE }}"
           test -n "$APPIMAGE_FILE" || (echo "AppImage missing" && exit 1)
           test -f "$APPIMAGE_FILE" || (echo "AppImage missing" && exit 1)
           echo "APPIMAGE_FILE=$APPIMAGE_FILE" >> $GITHUB_ENV
-          chmod +x "$APPIMAGE_FILE"
+          chmod +x "$APPIMAGE_FILE" || true
           echo "AppImage: $APPIMAGE_FILE"
           echo "AppImage size: $(ls -lah "$APPIMAGE_FILE" | awk '{print $5}')"
 
@@ -148,43 +189,45 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
+          APPIMAGE_FILE="${APPIMAGE_FILE:-${{ env.APPIMAGE_FILE }}}"
           FILES="$APPIMAGE_FILE"
           ZSYNC_FILE="${APPIMAGE_FILE}.zsync"
           [ -f "$ZSYNC_FILE" ] && FILES="$FILES $ZSYNC_FILE"
-          
+
           for file in $FILES; do
             if [ ! -f "$file" ]; then
               echo "File $file does not exist for upload"
               exit 1
             fi
           done
-          
+
           echo "Files to upload: $FILES"
-          
-          for i in {1..3}; do
+
+          for i in 1 2 3; do
             if gh release delete latest --yes 2>/dev/null; then
               break
-            elif [ $i -eq 3 ]; then
-              echo "Failed to delete existing release after 3 attempts"
             fi
-            sleep 5
+            if [ "$i" -eq 3 ]; then
+              echo "Failed to delete existing release after 3 attempts (continuing to create new)"
+            fi
+            sleep 2
           done
-          
-          for i in {1..3}; do
+
+          for i in 1 2 3; do
             if gh release create latest \
               --title "Zed AppImage ${{ env.APP_VERSION }}" \
               --notes "Zed version: ${{ env.APP_VERSION }}" \
               -- $FILES; then
+              echo "Release created"
               break
-            elif [ $i -eq 3 ]; then
+            fi
+            if [ "$i" -eq 3 ]; then
               echo "Failed to create release after 3 attempts"
               exit 1
             fi
-            sleep 5
+            sleep 2
           done
 
       - name: Post-release debug
-        if: steps.check_update.outputs.NEEDS_BUILD == 'true'
-        run: |
-          echo "Final files:"
-          ls -la Zed_Preview-*.* 2>/dev/null || ls -la Zed-*.* 2>/dev/null || true
+        if: steps.check_update.outputs.NE*](#)
