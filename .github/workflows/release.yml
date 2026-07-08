@@ -168,26 +168,31 @@ jobs:
           wget -q https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-947-x86_64.AppImage -O appimagetool.AppImage
           chmod +x appimagetool.AppImage
           
-          OUTPUT_FILE="Zed_Preview-${VERSION}-x86_64.AppImage"
+          echo "AppDir structure check:"
+          ls -lah AppDir/bin/zed AppDir/AppRun 2>&1 || true
           
-          echo "Running appimagetool..."
-          ls -la AppDir/bin/zed AppDir/AppRun || true
+          echo "Running appimagetool (no explicit output filename)..."
+          ./appimagetool.AppImage ./AppDir 2>&1 | tee appimagetool.log || true
           
-          # Capture full output
-          ./appimagetool.AppImage -v ./AppDir "$OUTPUT_FILE" 2>&1 | tee appimagetool.log
+          echo "Files created:"
+          ls -lah *.AppImage *.log 2>/dev/null || echo "No files found"
           
-          echo "=== Checking for created files ==="
-          ls -la *.AppImage *.log 2>/dev/null || echo "No AppImage/log files found"
+          # Find the created AppImage (appimagetool picks its own name)
+          APPIMAGE_FILE=$(ls -1 *.AppImage 2>/dev/null | grep -v appimagetool || true)
           
-          if [ ! -f "$OUTPUT_FILE" ]; then
-            echo "ERROR: Expected output file not found: $OUTPUT_FILE"
-            echo "Checking appimagetool log:"
+          if [ -z "$APPIMAGE_FILE" ]; then
+            echo "ERROR: No AppImage was created"
+            echo "=== appimagetool output ==="
             cat appimagetool.log || true
             exit 1
           fi
           
-          echo "APPIMAGE_FILE=$OUTPUT_FILE" >> $GITHUB_OUTPUT
-          echo "✓ Generated: $OUTPUT_FILE ($(ls -lh "$OUTPUT_FILE" | awk '{print $5}'))"
+          echo "Found AppImage: $APPIMAGE_FILE"
+          TARGET="Zed_Preview-${VERSION}-x86_64.AppImage"
+          mv "$APPIMAGE_FILE" "$TARGET"
+          
+          echo "APPIMAGE_FILE=$TARGET" >> $GITHUB_OUTPUT
+          echo "✓ Generated: $TARGET"
 
       - name: Verify and validate AppImage
         if: steps.check_update.outputs.NEEDS_BUILD == 'true'
