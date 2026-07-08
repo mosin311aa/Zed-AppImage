@@ -166,7 +166,7 @@ jobs:
           echo "Building AppImage with VERSION=$VERSION"
           
           echo "Step 1: Download appimagetool..."
-          if wget -q https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-940-x86_64.AppImage -O appimagetool.AppImage; then
+          if wget -q https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-947-x86_64.AppImage -O appimagetool.AppImage; then
             echo "✓ Downloaded appimagetool"
           else
             echo "✗ Failed to download appimagetool"
