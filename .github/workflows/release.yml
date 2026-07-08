@@ -168,10 +168,10 @@ jobs:
               wget -q https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-940-x86_64.AppImage -O appimagetool.AppImage
               chmod +x appimagetool.AppImage
               
-              # Run with full output capture
-              echo "Running appimagetool..."
               OUTPUT_FILE="Zed_Preview-${VERSION}-x86_64.AppImage"
-              if ./appimagetool.AppImage -v ./AppDir "$OUTPUT_FILE" 2>&1; then
+              
+              echo "Running appimagetool..."
+              if ./appimagetool.AppImage -v ./AppDir "$OUTPUT_FILE"; then
                 echo "✓ AppImage built successfully"
               else
                 RESULT=$?
