@@ -156,37 +156,37 @@ jobs:
           echo "Final AppDir top-level:"
           ls -la AppDir/
 
-          - name: Build AppImage
-            id: build_appimage
-            if: steps.check_update.outputs.NEEDS_BUILD == 'true'
-            env:
-              VERSION: ${{ env.APP_VERSION }}
-            run: |
-              set -euo pipefail
-              echo "Building AppImage with VERSION=$VERSION"
-              
-              wget -q https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-940-x86_64.AppImage -O appimagetool.AppImage
-              chmod +x appimagetool.AppImage
-              
-              OUTPUT_FILE="Zed_Preview-${VERSION}-x86_64.AppImage"
-              
-              echo "Running appimagetool..."
-              if ./appimagetool.AppImage -v ./AppDir "$OUTPUT_FILE"; then
-                echo "✓ AppImage built successfully"
-              else
-                RESULT=$?
-                echo "✗ appimagetool failed with exit code: $RESULT"
-                exit 1
-              fi
-              
-              if [ ! -f "$OUTPUT_FILE" ]; then
-                echo "ERROR: Output file not created: $OUTPUT_FILE"
-                ls -la *.AppImage 2>/dev/null || echo "No AppImage files found"
-                exit 1
-              fi
-              
-              echo "APPIMAGE_FILE=$OUTPUT_FILE" >> $GITHUB_OUTPUT
-              echo "Generated: $OUTPUT_FILE ($(ls -lh "$OUTPUT_FILE" | awk '{print $5}'))"
+      - name: Build AppImage
+        id: build_appimage
+        if: steps.check_update.outputs.NEEDS_BUILD == 'true'
+        env:
+          VERSION: ${{ env.APP_VERSION }}
+        run: |
+          set -euo pipefail
+          echo "Building AppImage with VERSION=$VERSION"
+          
+          wget -q https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-940-x86_64.AppImage -O appimagetool.AppImage
+          chmod +x appimagetool.AppImage
+          
+          OUTPUT_FILE="Zed_Preview-${VERSION}-x86_64.AppImage"
+          
+          echo "Running appimagetool..."
+          if ./appimagetool.AppImage -v ./AppDir "$OUTPUT_FILE"; then
+            echo "✓ AppImage built successfully"
+          else
+            RESULT=$?
+            echo "✗ appimagetool failed with exit code: $RESULT"
+            exit 1
+          fi
+          
+          if [ ! -f "$OUTPUT_FILE" ]; then
+            echo "ERROR: Output file not created: $OUTPUT_FILE"
+            ls -la *.AppImage 2>/dev/null || echo "No AppImage files found"
+            exit 1
+          fi
+          
+          echo "APPIMAGE_FILE=$OUTPUT_FILE" >> $GITHUB_OUTPUT
+          echo "Generated: $OUTPUT_FILE ($(ls -lh "$OUTPUT_FILE" | awk '{print $5}'))"
 
       - name: Verify and validate AppImage
         if: steps.check_update.outputs.NEEDS_BUILD == 'true'
