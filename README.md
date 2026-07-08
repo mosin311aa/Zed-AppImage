@@ -1,7 +1,7 @@
 <h2 align="center">Zed AppImage</h2>
 <p align="center">Unofficial / Community provided Zed AppImage - stable release</p>
 
-[![Zed AppImage release](https://github.com/lavilao/Zed-AppImage/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/lavilao/Zed-AppImage/actions/workflows/release.yml)
+[![Zed AppImage release](https://github.com/mosin311aa/Zed-AppImage/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/mosin311aa/Zed-AppImage/actions/workflows/release.yml)
 
 ## Get Started
 
