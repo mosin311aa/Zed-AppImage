@@ -36,11 +36,11 @@ jobs:
           echo "DATE_EPOCH=$(date -d "$DATE" +%s 2>/dev/null || date -d '2020-01-01' +%s)" >> $GITHUB_OUTPUT
 
           # Try to get the direct browser_download_url for the linux x86_64 tarball from the release by tag.
-          RELEASE_BY_TAG=$(curl -sH "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/zed-industries/zed/releases/tags/${TAG}" || true)
-          DOWNLOAD_URL=$(echo "$RELEASE_BY_TAG" | jq -r '.assets[]? | select(.name=="zed-linux-x86_64.tar.gz") | .browser_download_url' || true)
+          RELEASE_BY_TAG=$(curl -sH "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/zed-industries/zed/releases/tags/${TAG}")
+          DOWNLOAD_URL=$(echo "$RELEASE_BY_TAG" | jq -r '.assets[]? | select(.name=="zed-linux-x86_64.tar.gz") | .browser_download_url')
           # Fallback: search the ALL_RELEASES list for the first matching asset
           if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
-            DOWNLOAD_URL=$(echo "$ALL_RELEASES" | jq -r '.[].assets[]? | select(.name=="zed-linux-x86_64.tar.gz") | .browser_download_url' | head -n1 || true)
+            DOWNLOAD_URL=$(echo "$ALL_RELEASES" | jq -r '.[].assets[]? | select(.name=="zed-linux-x86_64.tar.gz") | .browser_download_url' | head -n1)
           fi
           if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
             echo "WARNING: could not determine download URL for zed-linux-x86_64.tar.gz (tag: ${TAG})" >&2
@@ -55,7 +55,7 @@ jobs:
         run: |
           set -euo pipefail
           # Query the GitHub API for the 'latest' release and inspect its body for our version marker
-          LATEST=$(curl -sH "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/${{ github.repository }}/releases/latest" || true)
+          LATEST=$(curl -sH "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/${{ github.repository }}/releases/latest")
           if echo "$LATEST" | jq -e . >/dev/null 2>&1; then
             EXISTING=$(echo "$LATEST" | jq -r '.body' | grep -oP 'Zed version: \K[0-9.-]+' || echo "none")
             if [ "$EXISTING" = "${{ steps.get_version.outputs.VERSION }}" ]; then
@@ -117,20 +117,20 @@ jobs:
             echo "AppDir already present"
           else
             # try to find unpacked directory
-            DIR=$(tar -tzf zed-linux-x86_64.tar.gz | head -n1 | cut -f1 -d"/" || true)
+            DIR=$(tar -tzf zed-linux-x86_64.tar.gz | head -n1 | cut -f1 -d"/")
             if [ -d "$DIR" ]; then
-              mv "$DIR" AppDir || true
+              mv "$DIR" AppDir
             else
               echo "Could not locate unpacked AppDir"
               exit 1
             fi
           fi
-          rm -f zed-linux-x86_64.tar.gz || true
+          rm -f zed-linux-x86_64.tar.gz
 
           echo "AppDir structure (desktop files):"
-          find AppDir -name "*.desktop" -type f || true
+          find AppDir -name "*.desktop" -type f
 
-          DESKTOP_FILE=$(find AppDir -name "*.desktop" -type f | head -n 1 || true)
+          DESKTOP_FILE=$(find AppDir -name "*.desktop" -type f | head -n 1)
           if [ -z "$DESKTOP_FILE" ]; then
             echo "ERROR: No desktop file found in AppDir"
             exit 1
@@ -138,22 +138,22 @@ jobs:
           echo "Found desktop file: $DESKTOP_FILE"
 
           cp "$DESKTOP_FILE" AppDir/zed.desktop
-          sed -i 's/Name=zed-preview/Name=Zed/' AppDir/zed.desktop || true
-          sed -i 's/Exec=zed-preview/Exec=zed/' AppDir/zed.desktop || true
+          sed -i 's/Name=zed-preview/Name=Zed/' AppDir/zed.desktop
+          sed -i 's/Exec=zed-preview/Exec=zed/' AppDir/zed.desktop
 
-          ICON_FILE=$(find AppDir -name "zed*.png" -type f | head -n 1 || true)
+          ICON_FILE=$(find AppDir -name "zed*.png" -type f | head -n 1)
           if [ -n "$ICON_FILE" ]; then
             cp "$ICON_FILE" AppDir/zed.png
             echo "Copied icon: $ICON_FILE"
           fi
 
           # ensure AppRun points to binary
-          cd AppDir && ln -sf bin/zed AppRun || true && cd ..
+          cd AppDir && ln -sf bin/zed AppRun && cd ..
           # normalize timestamps for reproducible builds
-          find AppDir -type f -o -type d | sort | xargs touch -t 202001010000.00 || true
+          find AppDir -type f -o -type d | sort | xargs touch -t 202001010000.00
 
           echo "Final AppDir top-level:"
-          ls -la AppDir/ || true
+          ls -la AppDir/
 
       - name: Build AppImage
         id: build_appimage
@@ -163,9 +163,9 @@ jobs:
         run: |
           set -euo pipefail
           echo "AppDir contents before build:"
-          ls -la AppDir/ || true
+          ls -la AppDir/
           echo "Desktop file in AppDir:"
-          cat AppDir/*.desktop || true
+          cat AppDir/*.desktop
 
           wget -q https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-940-x86_64.AppImage -O appimagetool.AppImage
           chmod +x appimagetool.AppImage
@@ -177,9 +177,9 @@ jobs:
           fi
 
           echo "Files generated (raw):"
-          ls -la *.AppImage 2>/dev/null || true
+          ls -la *.AppImage 2>/dev/null
           # Capture the actual generated AppImage name
-          APPIMAGE_FILE=$(ls *.AppImage 2>/dev/null | head -n 1 || true)
+          APPIMAGE_FILE=$(ls *.AppImage 2>/dev/null | head -n 1)
           if [ -z "$APPIMAGE_FILE" ]; then
             echo "No AppImage produced"
             exit 1
@@ -252,5 +252,5 @@ jobs:
         if: steps.check_update.outputs.NEEDS_BUILD == 'true'
         run: |
           echo "Final files:"
-          ls -la Zed_Preview-*.* 2>/dev/null || ls -la Zed-*.* 2>/dev/null || true
+          ls -la Zed_Preview-*.* 2>/dev/null || ls -la Zed-*.* 2>/dev/null
           echo "Post-release debug complete."
