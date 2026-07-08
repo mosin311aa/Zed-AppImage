@@ -71,7 +71,8 @@ jobs:
         if: steps.check_update.outputs.NEEDS_BUILD == 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y squashfs-tools libfuse2 wget jq curl gh
+          sudo apt-get install -y squashfs-tools libfuse3 wget jq curl gh
+
 
       - name: Download & prepare Zed with retry and validation
         if: steps.check_update.outputs.NEEDS_BUILD == 'true'
@@ -155,50 +156,37 @@ jobs:
           echo "Final AppDir top-level:"
           ls -la AppDir/
 
-      - name: Build AppImage
-        id: build_appimage
-        if: steps.check_update.outputs.NEEDS_BUILD == 'true'
-        env:
-          VERSION: ${{ env.APP_VERSION }}
-        run: |
-          set -euo pipefail
-          echo "AppDir structure before build:"
-          find AppDir -type f -o -type d | head -20
-          
-          echo "Checking AppRun and bin/zed:"
-          ls -la AppDir/AppRun || echo "AppRun missing"
-          ls -la AppDir/bin/zed || echo "bin/zed missing"
-
-          sudo apt-get install -y fuse libfuse2 || true
-          
-          wget -q https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-940-x86_64.AppImage -O appimagetool.AppImage
-          chmod +x appimagetool.AppImage
-
-          echo "Building AppImage with VERSION=$VERSION"
-          ./appimagetool.AppImage -v ./AppDir Zed_Preview-${VERSION}-x86_64.AppImage || {
-            echo "ERROR: appimagetool failed"
-            echo "AppImage tool output above ↑"
-            exit 1
-          }
-
-          echo "Files generated:"
-          ls -lah *.AppImage
-          APPIMAGE_FILE="Zed_Preview-${VERSION}-x86_64.AppImage"
-          echo "APPIMAGE_FILE=$APPIMAGE_FILE" >> $GITHUB_OUTPUT
-          
-          echo "Files generated (raw):"
-          ls -la *.AppImage 2>/dev/null
-          # Capture the actual generated AppImage name
-          APPIMAGE_FILE=$(ls *.AppImage 2>/dev/null | head -n 1)
-          if [ -z "$APPIMAGE_FILE" ]; then
-            echo "No AppImage produced"
-            exit 1
-          fi
-          # Normalize the name to a predictable format
-          TARGET="Zed_Preview-${VERSION}-x86_64.AppImage"
-          mv "$APPIMAGE_FILE" "$TARGET"
-          echo "APPIMAGE_FILE=$TARGET" >> $GITHUB_OUTPUT
-          echo "Generated APPIMAGE_FILE: $TARGET"
+          - name: Build AppImage
+            id: build_appimage
+            if: steps.check_update.outputs.NEEDS_BUILD == 'true'
+            env:
+              VERSION: ${{ env.APP_VERSION }}
+            run: |
+              set -euo pipefail
+              echo "Building AppImage with VERSION=$VERSION"
+              
+              wget -q https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-940-x86_64.AppImage -O appimagetool.AppImage
+              chmod +x appimagetool.AppImage
+              
+              # Run with full output capture
+              echo "Running appimagetool..."
+              OUTPUT_FILE="Zed_Preview-${VERSION}-x86_64.AppImage"
+              if ./appimagetool.AppImage -v ./AppDir "$OUTPUT_FILE" 2>&1; then
+                echo "✓ AppImage built successfully"
+              else
+                RESULT=$?
+                echo "✗ appimagetool failed with exit code: $RESULT"
+                exit 1
+              fi
+              
+              if [ ! -f "$OUTPUT_FILE" ]; then
+                echo "ERROR: Output file not created: $OUTPUT_FILE"
+                ls -la *.AppImage 2>/dev/null || echo "No AppImage files found"
+                exit 1
+              fi
+              
+              echo "APPIMAGE_FILE=$OUTPUT_FILE" >> $GITHUB_OUTPUT
+              echo "Generated: $OUTPUT_FILE ($(ls -lh "$OUTPUT_FILE" | awk '{print $5}'))"
 
       - name: Verify and validate AppImage
         if: steps.check_update.outputs.NEEDS_BUILD == 'true'
