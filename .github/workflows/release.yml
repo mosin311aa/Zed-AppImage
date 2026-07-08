@@ -168,17 +168,14 @@ jobs:
           wget -q https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-947-x86_64.AppImage -O appimagetool.AppImage
           chmod +x appimagetool.AppImage
           
-          echo "AppDir structure check:"
-          ls -lah AppDir/bin/zed AppDir/AppRun 2>&1 || true
-          
-          echo "Running appimagetool (no explicit output filename)..."
+          echo "Running appimagetool..."
           ./appimagetool.AppImage ./AppDir 2>&1 | tee appimagetool.log || true
           
           echo "Files created:"
-          ls -lah *.AppImage *.log 2>/dev/null || echo "No files found"
+          ls -lah *.AppImage 2>/dev/null || echo "No AppImage files found"
           
-          # Find the created AppImage (appimagetool picks its own name)
-          APPIMAGE_FILE=$(ls -1 *.AppImage 2>/dev/null | grep -v appimagetool || true)
+          # Find the created AppImage (exclude appimagetool itself)
+          APPIMAGE_FILE=$(ls -1 *.AppImage 2>/dev/null | grep -v appimagetool | head -1 || true)
           
           if [ -z "$APPIMAGE_FILE" ]; then
             echo "ERROR: No AppImage was created"
@@ -187,12 +184,9 @@ jobs:
             exit 1
           fi
           
-          echo "Found AppImage: $APPIMAGE_FILE"
-          TARGET="Zed_Preview-${VERSION}-x86_64.AppImage"
-          mv "$APPIMAGE_FILE" "$TARGET"
-          
-          echo "APPIMAGE_FILE=$TARGET" >> $GITHUB_OUTPUT
-          echo "✓ Generated: $TARGET"
+          echo "✓ Generated AppImage: $APPIMAGE_FILE ($(ls -lh "$APPIMAGE_FILE" | awk '{print $5}'))"
+          echo "APPIMAGE_FILE=$APPIMAGE_FILE" >> $GITHUB_OUTPUT
+
 
       - name: Verify and validate AppImage
         if: steps.check_update.outputs.NEEDS_BUILD == 'true'
