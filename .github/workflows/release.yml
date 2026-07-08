@@ -169,15 +169,23 @@ jobs:
           ls -la AppDir/AppRun || echo "AppRun missing"
           ls -la AppDir/bin/zed || echo "bin/zed missing"
 
+          sudo apt-get install -y fuse libfuse2 || true
+          
           wget -q https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-940-x86_64.AppImage -O appimagetool.AppImage
           chmod +x appimagetool.AppImage
 
           echo "Building AppImage with VERSION=$VERSION"
-          if ! ./appimagetool.AppImage ./AppDir; then
-            echo "ERROR: appimagetool failed to build AppImage"
+          ./appimagetool.AppImage -v ./AppDir Zed_Preview-${VERSION}-x86_64.AppImage || {
+            echo "ERROR: appimagetool failed"
+            echo "AppImage tool output above ↑"
             exit 1
-          fi
+          }
 
+          echo "Files generated:"
+          ls -lah *.AppImage
+          APPIMAGE_FILE="Zed_Preview-${VERSION}-x86_64.AppImage"
+          echo "APPIMAGE_FILE=$APPIMAGE_FILE" >> $GITHUB_OUTPUT
+          
           echo "Files generated (raw):"
           ls -la *.AppImage 2>/dev/null
           # Capture the actual generated AppImage name
