@@ -71,7 +71,7 @@ jobs:
         if: steps.check_update.outputs.NEEDS_BUILD == 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y squashfs-tools libfuse3 wget jq curl gh
+          sudo apt-get install -y squashfs-tools libfuse3-3 wget jq curl gh
 
 
       - name: Download & prepare Zed with retry and validation
