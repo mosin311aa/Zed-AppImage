@@ -162,23 +162,34 @@ jobs:
         env:
           VERSION: ${{ env.APP_VERSION }}
         run: |
-          set -euo pipefail
+          set -xeuo pipefail
           echo "Building AppImage with VERSION=$VERSION"
           
-          wget -q https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-940-x86_64.AppImage -O appimagetool.AppImage
-          chmod +x appimagetool.AppImage
-          
-          OUTPUT_FILE="Zed_Preview-${VERSION}-x86_64.AppImage"
-          
-          echo "Running appimagetool..."
-          if ./appimagetool.AppImage -v ./AppDir "$OUTPUT_FILE"; then
-            echo "✓ AppImage built successfully"
+          echo "Step 1: Download appimagetool..."
+          if wget -q https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-940-x86_64.AppImage -O appimagetool.AppImage; then
+            echo "✓ Downloaded appimagetool"
           else
-            RESULT=$?
-            echo "✗ appimagetool failed with exit code: $RESULT"
+            echo "✗ Failed to download appimagetool"
             exit 1
           fi
           
+          echo "Step 2: Make executable..."
+          chmod +x appimagetool.AppImage
+          ls -lh appimagetool.AppImage
+          
+          echo "Step 3: Verify AppDir..."
+          ls -la AppDir/ | head -10
+          
+          OUTPUT_FILE="Zed_Preview-${VERSION}-x86_64.AppImage"
+          echo "Step 4: Running appimagetool -> $OUTPUT_FILE..."
+          
+          ./appimagetool.AppImage -v ./AppDir "$OUTPUT_FILE" || {
+            RESULT=$?
+            echo "✗ appimagetool failed with exit code: $RESULT"
+            exit $RESULT
+          }
+          
+          echo "Step 5: Verify output..."
           if [ ! -f "$OUTPUT_FILE" ]; then
             echo "ERROR: Output file not created: $OUTPUT_FILE"
             ls -la *.AppImage 2>/dev/null || echo "No AppImage files found"
@@ -186,7 +197,7 @@ jobs:
           fi
           
           echo "APPIMAGE_FILE=$OUTPUT_FILE" >> $GITHUB_OUTPUT
-          echo "Generated: $OUTPUT_FILE ($(ls -lh "$OUTPUT_FILE" | awk '{print $5}'))"
+          echo "✓ Generated: $OUTPUT_FILE ($(ls -lh "$OUTPUT_FILE" | awk '{print $5}'))"
 
       - name: Verify and validate AppImage
         if: steps.check_update.outputs.NEEDS_BUILD == 'true'
