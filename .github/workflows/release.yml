@@ -165,34 +165,24 @@ jobs:
           set -xeuo pipefail
           echo "Building AppImage with VERSION=$VERSION"
           
-          echo "Step 1: Download appimagetool..."
-          if wget -q https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-947-x86_64.AppImage -O appimagetool.AppImage; then
-            echo "✓ Downloaded appimagetool"
-          else
-            echo "✗ Failed to download appimagetool"
-            exit 1
-          fi
-          
-          echo "Step 2: Make executable..."
+          wget -q https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-947-x86_64.AppImage -O appimagetool.AppImage
           chmod +x appimagetool.AppImage
-          ls -lh appimagetool.AppImage
-          
-          echo "Step 3: Verify AppDir..."
-          ls -la AppDir/ | head -10
           
           OUTPUT_FILE="Zed_Preview-${VERSION}-x86_64.AppImage"
-          echo "Step 4: Running appimagetool -> $OUTPUT_FILE..."
           
-          ./appimagetool.AppImage -v ./AppDir "$OUTPUT_FILE" || {
-            RESULT=$?
-            echo "✗ appimagetool failed with exit code: $RESULT"
-            exit $RESULT
-          }
+          echo "Running appimagetool..."
+          ls -la AppDir/bin/zed AppDir/AppRun || true
           
-          echo "Step 5: Verify output..."
+          # Capture full output
+          ./appimagetool.AppImage -v ./AppDir "$OUTPUT_FILE" 2>&1 | tee appimagetool.log
+          
+          echo "=== Checking for created files ==="
+          ls -la *.AppImage *.log 2>/dev/null || echo "No AppImage/log files found"
+          
           if [ ! -f "$OUTPUT_FILE" ]; then
-            echo "ERROR: Output file not created: $OUTPUT_FILE"
-            ls -la *.AppImage 2>/dev/null || echo "No AppImage files found"
+            echo "ERROR: Expected output file not found: $OUTPUT_FILE"
+            echo "Checking appimagetool log:"
+            cat appimagetool.log || true
             exit 1
           fi
           
