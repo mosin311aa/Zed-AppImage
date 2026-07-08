@@ -162,10 +162,12 @@ jobs:
           VERSION: ${{ env.APP_VERSION }}
         run: |
           set -euo pipefail
-          echo "AppDir contents before build:"
-          ls -la AppDir/
-          echo "Desktop file in AppDir:"
-          cat AppDir/*.desktop
+          echo "AppDir structure before build:"
+          find AppDir -type f -o -type d | head -20
+          
+          echo "Checking AppRun and bin/zed:"
+          ls -la AppDir/AppRun || echo "AppRun missing"
+          ls -la AppDir/bin/zed || echo "bin/zed missing"
 
           wget -q https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-940-x86_64.AppImage -O appimagetool.AppImage
           chmod +x appimagetool.AppImage
