@@ -11,6 +11,8 @@ jobs:
   build:
     name: Zed Release AppImage
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     outputs:
