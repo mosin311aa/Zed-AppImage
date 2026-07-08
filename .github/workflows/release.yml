@@ -16,7 +16,7 @@ jobs:
     outputs:
       needs_build: ${{ steps.check_update.outputs.NEEDS_BUILD }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Get version info
         id: get_version
@@ -168,10 +168,13 @@ jobs:
           cat AppDir/*.desktop || true
 
           wget -q https://github.com/probonopd/go-appimage/releases/download/continuous/appimagetool-940-x86_64.AppImage -O appimagetool.AppImage
-          chmod +x appimagetool.AppImage || true
+          chmod +x appimagetool.AppImage
 
           echo "Building AppImage with VERSION=$VERSION"
-          ./appimagetool.AppImage ./AppDir || true
+          if ! ./appimagetool.AppImage ./AppDir; then
+            echo "ERROR: appimagetool failed to build AppImage"
+            exit 1
+          fi
 
           echo "Files generated (raw):"
           ls -la *.AppImage 2>/dev/null || true
@@ -183,7 +186,7 @@ jobs:
           fi
           # Normalize the name to a predictable format
           TARGET="Zed_Preview-${VERSION}-x86_64.AppImage"
-          mv "$APPIMAGE_FILE" "$TARGET" || true
+          mv "$APPIMAGE_FILE" "$TARGET"
           echo "APPIMAGE_FILE=$TARGET" >> $GITHUB_OUTPUT
           echo "Generated APPIMAGE_FILE: $TARGET"
 
@@ -195,7 +198,7 @@ jobs:
           test -n "$APPIMAGE_FILE" || (echo "AppImage missing" && exit 1)
           test -f "$APPIMAGE_FILE" || (echo "AppImage missing" && exit 1)
           echo "APPIMAGE_FILE=$APPIMAGE_FILE" >> $GITHUB_ENV
-          chmod +x "$APPIMAGE_FILE" || true
+          chmod +x "$APPIMAGE_FILE"
           echo "AppImage: $APPIMAGE_FILE"
           echo "AppImage size: $(ls -lah "$APPIMAGE_FILE" | awk '{print $5}')"
 
